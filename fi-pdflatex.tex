@@ -55,21 +55,13 @@
     department  = Department of Computer Systems and Communications,
     author      = Pavol Baran,
     gender      = m,
-    advisor     = {RNDr. Lukáš Hejtmánek, Ph.D},
+    advisor     = {RNDr. Lukáš Hejtmánek, Ph.D.},
     title       = {Checkpoint/Restore in Jupyterhub},
     TeXtitle    = {Checkpoint/Restore in Jupyterhub},
-    keywords    = {keyword1, keyword2, ...},
-    TeXkeywords = {keyword1, keyword2, \ldots},
-    abstract    = {%
-      This is the abstract of my thesis, which can
-
-      span multiple paragraphs.
-    },
-    thanks      = {%
-      These are the acknowledgements for my thesis, which can
-
-      span multiple paragraphs.
-    },
+    keywords    = {JupyterHub, JupyterLab, Jupyter Notebook, Kubernetes, Checkpoint, Restore, Spawner},
+    TeXkeywords = {JupyterHub, JupyterLab, Jupyter Notebook, Kubernetes, Checkpoint, Restore, Spawner},
+    abstract    = {TODO: },
+    thanks      = {I would like to thank my advisor RNDr. Lukáš Hejtmánek, Ph.D., for his help and guidance. I would also like to thank my family and friends for supporting me and providing an environment where I could focus on this thesis.},
     bib         = example.bib,
     %% Remove the following line to use the JVS 2018 faculty logo.
     facultyLogo = fithesis-fi,
@@ -97,6 +89,11 @@
 \usepackage{floatrow} %% Putting captions above tables
 \floatsetup[table]{capposition=top}
 \usepackage[babel]{csquotes} %% Context-sensitive quotation marks
+
+%%Does \Cref links
+\usepackage{hyperref}
+\usepackage{cleveref}
+
 \begin{document}
 %% The \chapter* command can be used to produce unnumbered chapters:
 \chapter*{Introduction}
@@ -106,28 +103,89 @@
 \markright{\textsc{Introduction}}
 \addcontentsline{toc}{chapter}{Introduction}
 
-Theses are rumoured to be \enquote{the capstones of education}, so
-I decided to write one of my own. If all goes well, I will soon
-have a diploma under my belt. Wish me luck!
+TODO:
 
-\begin{otherlanguage}{czech}
-Říká se, že závěrečné práce jsou \enquote{vyvrcholením studia}
-a tak jsem se rozhodl jednu také napsat. Pokud vše půjde podle
-plánu, odnesu si na konci semestru diplom. Držte mi palce!
-\end{otherlanguage}
+\chapter{JupyterHub}
+Because this thesis focuses on checkpointing and restoring Jupyter Notebooks, it is vital to understand what these notebooks are and in what scenarios they are used. This chapter describes Jupyter Notebook, its evolved iteration, Jupyter Lab, and the orchestrator of multiple running Notebooks, JupyterHub.
 
-\begin{otherlanguage}{slovak}
-Hovorí sa, že záverečné práce sú \enquote{vyvrcholením štúdia}
-a tak som sa rozhodol jednu tiež napísať. Ak všetko pôjde podľa
-plánu, odnesiem si na konci semestra diplom. Držte mi palce!
-\end{otherlanguage}
+\section{Jupyter Notebook}
+Jupyter Notebook is an open source application that allows users to easily create and share computational notebooks - documents that combine code, interactive controls, plain language, graphs, and figures, among other visualizations \cite{jupyter_notebook}.
+\footnote{Note that there exist other projects focused on computation notebooks, such as the proprietary Wolfram Mathematica \url{https://www.wolfram.com/mathematica/}.}
+The ability to create computational notebook comes from the fact that Jupyter Notebook runs as a web server, providing a user interface in a web browser, through which users can write code with auto-completion, execute the code, as well as provide description or annotate the code using Markdown or LaTeX languages.
+On the other hand, the ability to share computational notebooks stems from simple format in which the notebooks are stored. 
 
-\begin{otherlanguage}{german}
-Man munkelt, dass die Dissertation \enquote{die Krönung der
-Ausbildung} ist. Deshalb habe ich mich beschlossen meine eigene
-zu schreiben. Wenn alles gut geht, bekomme ich bald ein Diplom.
-Wünsch mir Glück!
-\end{otherlanguage}
+The notebook documents, also commonly referred to as Jupyter Notebooks, 
+\footnote{Throughout this thesis, the name \emph{Jupyter Notebook}, references only the application itself, not the notebook document that can be created through the application.}
+are stored in a open document format based on JSON, and the file itself uses \emph{.ipynb} extension. The document contains complete record of the user's sessions including the output of the executed code. Since JSON is a plain text format, it allows for easy version control using Git, as well as conversion to other formats such as HTML or PDF, which can then be shared through the internet or simply, through a piece of paper \cite{jupyter_notebook}. 
+
+\Cref{fig:jupyter-notebook-screenshot} shows the Notebooks's user interface (UI) in browser. The UI provides standard keyboard shortcuts for editing, and as already mentioned, auto-completion of code. However, apart from the functionality of word editor, the UI allows for manipulation of cells.
+
+These cells are the main building blocks of the notebook document. There are three types of a cell \cite{jupyter_notebook}:
+
+\begin{description}
+
+    \item[Code cell]
+    These allow for writing and executing code in a particular language. The type of language depends on the \emph{Kernel} that the Jupyter Notebook server is communicating with. The exact mechanism behind the execution of code in the Notebook is out of the scope of this thesis. 
+
+    \item[Markdown cell]
+    These cells are meant for any text that is supposed to describe, explain, or just comment the code. Generally the text in these cells is in Markdown language, however mathematical notations can also be prescribed using LaTeX. 
+    
+    \item[Raw cell]
+    Unlike text in Markdown cells, text in raw cell will be uninterpreted by Jupyter Notebook.
+    
+
+\end{description}
+
+
+\begin{figure}[H]
+  \begin{center}
+  \includegraphics[width=\textwidth]{figures/jupyter-notebook-screenshot.png}
+  \end{center}
+  \caption{Jupyter Notebook's user interface.}
+  \label{fig:jupyter-notebook-screenshot}
+\end{figure}
+
+
+
+Jupyter Notebook has become widely used in AI research communities. https://cdn.aaai.org/ocs/10349/10349-46093-1-PB.pdf
+
+\section{JupyterLab}
+JupyterLab's documentation describes JupyterLab as Jupyter Notebook's sibling\cite{jupyter_lab}. However, referring to it as a sibling might give the impression that JupyterLab is merely an alternative to Jupyter Notebook. In reality, JupyterLab represents a significant advancement, offering a more sophisticated and customizable user interface which can be tailored to different use-cases. JupyterLab retains the core functionalities of Jupyter Notebook, one of which being the document format, but it expands significantly upon them by providing a modular, flexible workspace that supports multiple panels and interactive widgets.
+
+
+\begin{figure}[H]
+  \begin{center}
+  \includegraphics[width=\textwidth]{figures/jupyter-lab-extended-screenshot.png}
+  \end{center}
+  \caption{Jupyter Lab's user interface.}
+  \label{fig:jupyter-lab-screenshot}
+\end{figure}
+
+
+\section{JupyterHub???}
+
+\section{JupyterHub in Kubernetes}
+
+\section{KubeSpawner}
+
+\chapter{Checkpoint/Restore in Userspace}
+
+\section{Checkpoint/Restore of containers}
+
+\section{Checkpoint/Restore in Kubernetes}
+
+\chapter{Checkpoint/Restore of Jupyter Notebooks in Kubernetes}
+
+\section{Architecture}
+
+\chapter{Checkpointer}
+
+\chapter{Checkpoint Spawner}
+
+\chapter{Future work}
+
+\chapter{Conclusion}
+
 
 \chapter{Using lightweight markup}
 \shorthandoff{-}
@@ -579,7 +637,7 @@ fonts will become available: \[
   See \url{http://tex.stackexchange.com/a/58124/70941}.
 }.
 
-\chapter{Inserting the bibliography}
+\chapter{Conclusion}
 After linking a bibliography data\-base files to the document using
 the \verb"\"\texttt{thesis\discretionary{-}{}{}setup\{bib\discretionary{=}{=}{=}%
 \{\textit{file1},\textit{file2},\,\ldots\,\}\}} command, you can
@@ -670,6 +728,7 @@ the index will be ill-sorted.
   \phantomsection %% Print the index and insert it into the
   \addcontentsline{toc}{chapter}{\indexname} %% table of contents.
   \printindex
+
 
 \appendix %% Start the appendices.
 \chapter{An appendix}

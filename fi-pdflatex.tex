@@ -53,7 +53,7 @@
     faculty     = fi,
     type        = mgr,
     department  = Department of Computer Systems and Communications,
-    author      = Pavol Baran,
+    author      = Bc. Pavol Baran,
     gender      = m,
     advisor     = {RNDr. Lukáš Hejtmánek, Ph.D.},
     title       = {Checkpoint/Restore in Jupyterhub},
@@ -61,7 +61,7 @@
     keywords    = {JupyterHub, JupyterLab, Jupyter Notebook, Kubernetes, Checkpoint, Restore, Spawner},
     TeXkeywords = {JupyterHub, JupyterLab, Jupyter Notebook, Kubernetes, Checkpoint, Restore, Spawner},
     abstract    = {TODO: },
-    thanks      = {I would like to thank my advisor RNDr. Lukáš Hejtmánek, Ph.D., for his help and guidance. I would also like to thank my family and friends for supporting me and providing an environment where I could focus on this thesis.},
+    thanks      = {I would like to thank my advisor RNDr. Lukáš Hejtmánek, Ph.D., for his help and guidance, as well as RNDr. Viktória Spišaková for helping me troubleshoot many CRIU issues. Lastly, I want to thank my family and friends for supporting me and providing an environment where I could focus on this thesis.},
     bib         = example.bib,
     %% Remove the following line to use the JVS 2018 faculty logo.
     facultyLogo = fithesis-fi,
@@ -94,6 +94,10 @@
 \usepackage{hyperref}
 \usepackage{cleveref}
 
+% Only 2 leveled Contents
+\addtocontents{toc}{\setcounter{tocdepth}{1}}
+
+
 \begin{document}
 %% The \chapter* command can be used to produce unnumbered chapters:
 \chapter*{Introduction}
@@ -103,9 +107,9 @@
 \markright{\textsc{Introduction}}
 \addcontentsline{toc}{chapter}{Introduction}
 
-TODO:
+TODO: at the end
 
-\chapter{JupyterHub}
+\chapter{Project Jupyter??}
 Because this thesis focuses on checkpointing and restoring Jupyter Notebooks, it is vital to understand what these notebooks are and in what scenarios they are used. This chapter describes Jupyter Notebook, its evolved iteration, Jupyter Lab, and the orchestrator of multiple running Notebooks, JupyterHub.
 
 \section{Jupyter Notebook}
@@ -125,7 +129,7 @@ These cells are the main building blocks of the notebook document. There are thr
 \begin{description}
 
     \item[Code cell]
-    These allow for writing and executing code in a particular language. The type of language depends on the \emph{Kernel} that the Jupyter Notebook server is communicating with. The exact mechanism behind the execution of code in the Notebook is out of the scope of this thesis. 
+    These allow for writing and executing code in a particular language, most commonly Python. The type of language depends on the \emph{Kernel} that the Jupyter Notebook server is communicating with. The exact mechanism behind the execution of code in the Notebook is out of the scope of this thesis, nevertheless there are Kernels for almost any language, with over a hundred\footnote{https://github.com/jupyter/jupyter/wiki/Jupyter-kernels} to choose from.
 
     \item[Markdown cell]
     These cells are meant for any text that is supposed to describe, explain, or just comment the code. Generally the text in these cells is in Markdown language, however mathematical notations can also be prescribed using LaTeX. 
@@ -133,7 +137,6 @@ These cells are the main building blocks of the notebook document. There are thr
     \item[Raw cell]
     Unlike text in Markdown cells, text in raw cell will be uninterpreted by Jupyter Notebook.
     
-
 \end{description}
 
 
@@ -146,31 +149,138 @@ These cells are the main building blocks of the notebook document. There are thr
 \end{figure}
 
 
-
-Jupyter Notebook has become widely used in AI research communities. https://cdn.aaai.org/ocs/10349/10349-46093-1-PB.pdf
+ TODO: Jupyter Notebook has become widely used in AI research communities \url{ https://cdn.aaai.org/ocs/10349/10349-46093-1-PB.pdf} and other academical environments with over milion \url{https://ieeexplore.ieee.org/abstract/document/8816763} notebooks available online.
 
 \section{JupyterLab}
-JupyterLab's documentation describes JupyterLab as Jupyter Notebook's sibling\cite{jupyter_lab}. However, referring to it as a sibling might give the impression that JupyterLab is merely an alternative to Jupyter Notebook. In reality, JupyterLab represents a significant advancement, offering a more sophisticated and customizable user interface which can be tailored to different use-cases. JupyterLab retains the core functionalities of Jupyter Notebook, one of which being the document format, but it expands significantly upon them by providing a modular, flexible workspace that supports multiple panels and interactive widgets.
-
+JupyterLab's documentation describes JupyterLab as Jupyter Notebook's \emph{sibling} \cite{jupyter_lab}. However, referring to it as a sibling might give the impression that JupyterLab is merely an alternative to Jupyter Notebook. In reality, JupyterLab represents a significant advancement, offering a more sophisticated and customizable user interface which can be tailored to different use-cases. JupyterLab retains the core functionalities of Jupyter Notebook, one of which being the document format, but it expands significantly upon them by providing a modular, flexible workspace that supports multiple panels and interactive widgets as can be seen on \Cref{fig:jupyter-lab-screenshot}. Whereas Jupyter Notebook's user interface (\Cref{fig:jupyter-notebook-screenshot}) centers around one notebook document, JupyterLab resembles more of an integrated development environment (IDE), with file browser on the hand left side, and a variable inspector on the right.
 
 \begin{figure}[H]
   \begin{center}
   \includegraphics[width=\textwidth]{figures/jupyter-lab-extended-screenshot.png}
   \end{center}
-  \caption{Jupyter Lab's user interface.}
+  \caption{JupyterLab's user interface.}
   \label{fig:jupyter-lab-screenshot}
 \end{figure}
 
+All this does not negate the fact that some individuals still prefer the comparably simplified interface of Jupyter Notebook or that they do not see the value in upgrading. Moreover, as JupyterLab supports the same \emph{.ipynb} document format, and the initial versions depended on the installation of Notebook, it is not uncommon, in the community and documentation, to refer to JupyterLab as Jupyter Notebook instead. Consequently, since JupyterHub (\Cref{sec:jupyterhub}) supports both JupyterLab and Jupyter Notebook, this thesis will, henceforth, adopt the term Jupyter Notebook exclusively.
 
-\section{JupyterHub???}
+\section{JupyterHub}
+\label{sec:jupyterhub}
+Jupyter Notebook was initially designed for single-user environments. However, as Jupyter Notebook's popularity rose among researchers, data analyst, and academics, such did the needed for a way to quickly deploy Jupyter Notebooks for multiple users in a centralized environment, without requiring each user to install Jupyter Notebook and thus avoiding the hassle of troubleshooting installation and dependency issues.
 
-\section{JupyterHub in Kubernetes}
+JupyterHub addressed this need by providing a \emph{multi-user Hub that creates, manages, and proxies multiple instances of the single-user Jupyter notebook server}, which allows it to be used in \emph{a class of students, a corporate data science group, or a scientific research group} \cite{jupyterhub}. Simply put, JupyterHub takes the single-user Jupyter Notebook, and adds a layer of functionality on top, providing user management, and a control over the running environment of the Notebooks.
+
+JupyterHub was designed with extendability in mind, and as such it comes in two main distributions \cite{jupyterhub}:
+
+\begin{description}
+
+    \item[The Littlest JupyterHub (TLJH)]
+    Intended primarly for educators teaching small classes of ten, to at most hundred students. The distribution runs on a single server without any containerization technology such as Docker or Kubernetes and intends to provide simple as possible installation and configuration setup for JupyterHub \cite{littlest_jupyterhub}.
+
+    \item[Zero to JupyterHub with Kubernetes (Z2JH)]
+    This distribution runs in Kubernetes, with many of it's subsystems running in a separate containers, which allow it to dynamically scale up or down depending on the required resources and user demand. By utilizing several Kubernetes Nodes, the distribution is capable of serving even thousand users. This thesis builds upon the Z2JH distribution (\Cref{sec:z2jh}).
+    
+\end{description}
+
+Although using one of the distributions gives some assurance of scalability, it is not the only way how to run JupyterHub. JupyterHub can be run as any Python application and configured to use specific \emph{Authenticator, Spawner, and Services} (see \Cref{subsec:jupyterhub:architecture}) based on a distinct use-case. The unofficial distribution, \emph{JupyterHub the hard way}\footnote{\url{https://github.com/jupyterhub/jupyterhub-the-hard-way/blob/master/docs/installation-guide-hard.md}}, provides a thorough walk-through for setting up JupyterHub from scratch.
+
+
+\section{JupyterHub's Architecture}
+\label{subsec:jupyterhub:architecture}
+To give users as much freedom as possible when it comes to customizing their installation, JupyterHub is comprised of several subsystems which have multiple different implementations, enabling administrators to choose the best fit for their specific use case, such as different spawners, authenticators, and services. The following subsections provide brief look into the most important modules.
+
+
+\begin{figure}[H]
+  \begin{center}
+  \includegraphics[width=\textwidth]{figures/jupyer-hub-architecture.jpeg}
+  \end{center}
+  \caption{High level architecture of JupyterHub \cite{jupyterhub}.} TODO: replace with custom diagram as this one is not representative.
+  \label{fig:jupyter-hub-arch}
+\end{figure}
+
+
+\subsection{Configuration}
+The main interface for configuration of JupyterHub is the \emph{jupyterhub\_config.py} file. 
+TODO: 
+
+\subsection{Hub}
+Hub is the central piece, connecting all the modules together. Yet the end-user interacts with Hub itself only briefly, during login authentication and initialization or shutdown of Jupyter Notebooks. Hub's role is orchestrational, in that, it starts and stops the Proxy as well as Services processes, instruct Spawner when to spawn or remove Notebooks, keeps track of users, and delegates authentication of users to the Authenticator.
+
+\subsection{Proxy}
+The proxy, more specifically reverse proxy, serves as an ingress to JupyterHub. Each connection to JupyterHub and thereby to the spawned Notebooks, goes through the Proxy. 
+When a user connects to JupyterHub for the first time, the Proxy forwards the connection to the Hub. Hub then delegates authentication of the user to the Authenticator, and only when the user is authenticated, instructs the Spawner to spawn the Jupyter Notebook. Once the Notebook is up and running, the Hub will update the routing table in the Proxy, to forward connections from the specific user to the spawned Notebook. Afterward, the Proxy forwards each connection of this specific user directly to the Notebook, until the user credentials expire and the whole flow is repeated, with the notable exception, that if the Notebook is already running, it does not need do be spawned.
+
+What this basically means is that the hub itself can shut down and the proxy can continue to allow users to communicate with their notebook servers.
+By default, the hub starts the proxy automatically and stops the proxy when the hub stops.
+But when you configure the proxy to run separately, user’s connections will continue to work even without the hub.
+(This further emphasizes that the hub is responsible for starting, not running, the notebooks)
+The proxy has to be able to internally connect to both the hub and all the single-user servers.
+The proxy always runs as a separate process to JupyterHub
+
+\subsection{Authenticator}
+Whenever Hub needs to authorize user's connection or request, it delegates this task to the Authenticator. The Authenticator servers as an interface between Hub and a user management system, allowing validation of user credentials and management of user accounts to be decoupled from JupyterHub. To be specific, Authenticator is a part of Hub's codebase, and as such a Python class, which can be extended to provide desired functionality.
+
+To keep track of which Notebook belongs to which user, among other tasks, the Hub has to record information about users in a database outside the Authenticator class. Even so, the Hub stores only the data relevant to the user's role and activities in JupyterHub and does store the users themselves. The management of users, which users exist, how users login, etc., is left up to the Authenticator.
+
+
+Many Authenticator implementations available delegate the user management to a third party identity provider through OAuth (OAuthenticator) or LDAP (ldapauthenticator), or the PAMAuthenticator included in JupyterHub by default, which utilizes the PAM mechanism in Linux to authenticate users. One exception to that is the NativeAuthenticator, which actually stores and validates its own usernames and passwords, effectively managing all users within JupyterHub only. The other exception is the DummyAuthenticator which allows any user to login \cite{jupyterhub_arch}.
+
+
+\subsection{Spawner}
+Similar to how Authenticator is an interface between Hub and the user management system, the Spawner is an interface between Hub and the running environment of Notebooks. Just like Authenticator, Spawner is a Python class in Hub's codebase and has multiple implementations depending on where how should Jupyter Notebooks be spawned. 
+
+To define itself as Spawner, the Python class needs to be able to perform three actions \cite{jupyterhub_spawner}:
+
+\begin{itemize}
+  \item start a Jupyter Notebook
+  \item poll whether a Jupyter Notebook is still running
+  \item stop a Jupyter Notebook
+\end{itemize}
+
+As it should be possible for the Hub to stop without affecting the functionality, the Spawner can take advantage of two methods which allow the spawner to store it's state to the database and restore it's state from database.
+TODO: \url{https://jupyterhub.readthedocs.io/en/stable/reference/api/spawner.html} load\_state get\_state
+
+JupyterHub by default uses the LocalProcessSpawner that spawns Notebooks as local processes, however it does not work on Windows. Fortunately there are many other Spawner implementations with the notable ones being:
+
+\begin{description}
+
+    \item[DockerSpawner] Capable of spawning Notebooks in Docker containers on the same machine or using DockerSwarm for spawning Notebooks on remote machines \cite{jupyterhub_spawner}. The spawner can utilize Docker's API and limit the Notebook's CPU and memory usage.
+    
+    \item[SystemdSpawner]
+    Enables to spawn Notebooks using \emph{systemd} the \emph{system and service manager} \cite{systemd} for Linux. Similarly to DockerSpawner it allows to limit the CPU and memory each Notebook is granted. \textbf{The Littlest JupyterHub} distribution uses Spawner, which is based on SystemdSpawner.
+
+    \item[SSHSpawner]
+    Can be used to spawn Notebooks on a remote server through SSH. However, the development of this Spawner seems that the project\footnote{https://github.com/NERSC/sshspawner} is no longer actively maintained.
+
+    \item[KubeSpawner]
+    Allows spawning Notebooks as Kubernetes Pods and therefore can utilize the full potential of Kubernetes API, which implies that JupyterHub must be running in Kubernetes cluster. This is the Spawner that the \textbf{Zero to JupyterHub with Kubernetes} distribution uses, and as such, this thesis is extending this Spawner with checkpoint and restore capabilities (\Cref{chap:checkpoint_spawner}).
+    
+\end{description}
+
+
+\subsection{Services}
+Services are yet another way JupyterHub can be customized or extended. In context of JupyterHub a Service is defined \emph{as something (usually a process) that can interact with the Hub’s REST API}\cite{jupyterhub_service}.
+
+JupyterHub recognizes two types of Services. The first, \textbf{Hub-Managed Service}, are services that are started as a sub-process of Hub and managed directly by Hub. The Hub takes responsibility for starting, with a configured command and environment variables, stopping, when requested or when the Hub stops, and restarting them when they unexpectedly terminate. The second type, \textbf{Externally-Managed Services}, are independent services that are not directly controlled by the Hub but still need to interact with it. In this case, the Service does not need to be a process but might be any type of application. Both types of Services can be specified in JupyterHub's configuration file, however only Externally-Managed Services can be added or removed at runtime \cite{jupyterhub_service}.
+
+Adding a Service to JupyterHub can have three benefits for the Service. First of all, the Service obtains an API token which it can use to call JupyterHub's REST API with configured permissions. Second benefit is that JupyterHub's Proxy can forward requests from user to the Service thus exposing the Service to the internet. Lastly, the Service can utilize the Hub's authentication mechanism to be accessible only if the user's permission allow him to.
+
+
+\section{Zero to JupyterHub with Kubernetes}
+\label{sec:z2jh}
+
+
+
 
 \section{KubeSpawner}
+\label{sec:kubespawner}
+
+
+
 
 \chapter{Checkpoint/Restore in Userspace}
 
-\section{Checkpoint/Restore of containers}
+\section{Checkpoint/Restore in container runtimes}
 
 \section{Checkpoint/Restore in Kubernetes}
 
@@ -179,510 +289,18 @@ JupyterLab's documentation describes JupyterLab as Jupyter Notebook's sibling\ci
 \section{Architecture}
 
 \chapter{Checkpointer}
+\label{chap:checkpointer}
 
-\chapter{Checkpoint Spawner}
+\chapter{CheckpointSpawner}
+\label{chap:checkpoint_spawner}
+
+
+\chapter{Deployment}
 
 \chapter{Future work}
 
 \chapter{Conclusion}
 
-
-\chapter{Using lightweight markup}
-\shorthandoff{-}
-\begin{markdown}[
-  citationNbsps,
-  citations,
-  definitionLists,
-  fencedCode,
-  hashEnumerators,
-  inlineNotes,
-  notes,
-  pipeTables,
-  rawAttribute,
-  tableCaptions,
-]
-
-If you decide that `\LaTeX`{=tex} is too wordy for some parts of your
-document, there are [packages](https://www.ctan.org/pkg/markdown
-"Markdown") that allow you to use more lightweight markup next
-to it.
-
- ![logo](fithesis/logo/mu/fithesis-fi-color "The old-style seal of
-         the Faculty of Informatics")
-
-| Right | Left | Default | Center |
-|------:|:-----|---------|:------:|
-|    12 | 12   | 12      |   12   |
-|   123 | 123  | 123     |   123  |
-|     1 | 1    | 1       |    1   |
-
-: This is a table with different types of alignment.
-
-This is a bullet list. Unlike numbered lists, bulleted lists
-contain an **unordered** set of bullet points. When a bullet point
-contains multiple paragraphs, the list is typeset as follows:
-
-  * The first item of a bullet list
-
-    that spans several paragraphs,
-  * the second item of a bullet list,
-  * the third item of a bullet list.
-
-When none of the bullet points contains multiple paragraphs, the
-list has a more compact form:
-
-  * The first item of a bullet list,
-  * the second item of a bullet list,
-  * the third item of a bullet list.
-
-Unlike a bulleted list, a numbered list implies chronology or
-ordering of the bullet points. When a bullet point
-contains multiple paragraphs, the list is typeset as follows:
-
-  1. The first item of an ordered list
-
-     that spans several paragraphs,
-  2. the second item of an ordered list,
-  3. the third item of an ordered list.
-  #. If you are feeling lazy,
-  #. you can use hash enumerators as well.
-
-When none of the bullet points contains multiple paragraphs, the
-list has a more compact form:
-
-  6. The first item of an ordered list,
-  7. the second item of an ordered list,
-  8. the third item of an ordered list.
-
-Definition lists are used to provide definitions of terms. When
-a definition contains multiple paragraphs, the list is typeset
-as follows:
-
-Term 1
-
-:   Definition 1
-
-*Term 2*
-
-:   Definition 2
-
-        Some code, part of Definition 2
-
-    Third paragraph of Definition 2.
-
-When none of the bullet points contains multiple paragraphs, the
-list has a more compact form:
-
-Term 1
-:   Definition 1
-*Term 2*
-:   Definition 2
-
-Block quotations are used to include an excerpt from an external
-document in way that visually clearly separates the excerpt from
-the rest of the work:
-
-> This is the first level of quoting.
->
-> > This is nested blockquote.
->
-> Back to the first level.
-
-Footnotes are used to include additional information to the
-document that are not necessary for the understanding of the main
-text. Here is a footnote reference^[Here is the footnote.] and
-another.[^longnote]
-
-[^longnote]: Here's one with multiple blocks.
-
-    Subsequent paragraphs are indented to show that they
-belong to the previous footnote.
-
-        Some code
-
-    The whole paragraph can be indented, or just the first
-    line.  In this way, multi-paragraph footnotes work like
-    multi-paragraph list items.
-
-Citations are used to provide bibliographical references to other
-documents. This is a regular citation~[@borgman03, p. 123]. This is
-an in-text citation: @borgman03. You can also cite several authors
-at once using both regular~[see @borgman03, p. 123; @greenberg98,
-sec.  3.2; and @thanh01] and in-text citations: @borgman03 [p.123;
-@greenberg98, sec. 3.2; @thanh01].
-
-Code blocks are used to include source code listings into the
-document:
-
-    #include <stdio.h>
-    #include <unistd.h>
-    #include <sys/types.h>
-    #include <sys/wait.h>
-    // This is a comment
-    int main(int argc, char **argv)
-    {
-        while (--c > 1 && !fork());
-        sleep(c = atoi(v[c]));
-        printf("%d\n", c);
-        wait(0);
-        return 0;
-    }
-
-There is an alternative syntax for code blocks that allows you to
-specify additional information, such as the language of the source
-code. This information can be used for syntax highlighting:
-
-``` sh
-#!/bin/sh
-fac() {
-  if [ "$1" -leq 1 ]; then
-    echo 1
-  else
-    echo $(("$1" * fac $(("$1" - 1))))
-  fi
-}
-``````````````
-
-~~~~~~ ruby
-# Here's a way to empty an array.
-joe = [ 'eggs.', 'some', 'break', 'to', 'Have' ]
-print(joe.pop, " ") while joe.size > 0
-print "\n"
-~~~~~~
-
-\end{markdown}
-\shorthandon{-}
-
-\chapter{These are}
-\section{the available}
-\subsection{sectioning}
-\subsubsection{commands.}
-\paragraph{Paragraphs and}
-\subparagraph{subparagraphs are available as well.}
-Inside the text, you can also use unnumbered lists,
-\begin{itemize}
-  \item such as
-  \item this one
-  \begin{itemize}
-    \item     and they can be nested as well.
-    \item[>>] You can even turn the bullets into something fancier,
-    \item[\S] if you so desire.
-  \end{itemize}
-\end{itemize}
-Numbered lists are
-\begin{enumerate}
-  \item very
-  \begin{enumerate}
-    \item similar
-  \end{enumerate}
-\end{enumerate}
-and so are description lists:
-\begin{description}
-  \item[Description list]
-    A list of terms with a description of each term
-\end{description}
-The spacing of these lists is geared towards paragraphs of text.
-For lists of words and phrases, the \textsf{paralist} package
-offers commands
-\begin{compactitem}
-  \item that
-  \begin{compactitem}
-    \item are
-    \begin{compactitem}
-      \item better
-      \begin{compactitem}
-        \item suited
-      \end{compactitem}
-    \end{compactitem}
-  \end{compactitem}
-\end{compactitem}
-\begin{compactenum}
-  \item to
-  \begin{compactenum}
-    \item this
-    \begin{compactenum}
-      \item kind of
-      \begin{compactenum}
-        \item content.
-      \end{compactenum}
-    \end{compactenum}
-  \end{compactenum}
-\end{compactenum}
-The \textsf{amsthm} package provides the commands necessary for the
-typesetting of mathematical definitions, theorems, lemmas and
-proofs.
-
-%% We will define several mathematical sectioning commands.
-\newtheorem{theorem}{Theorem}[section] %% The numbering of theorems
-                               %% will be reset after each section.
-\newtheorem{lemma}[theorem]{Lemma}         %% The numbering of lemmas
-\newtheorem{corollary}[theorem]{Corollary} %% and corollaries will
-                               %% share the counter with theorems.
-\theoremstyle{definition}
-\newtheorem{definition}{Definition}
-\theoremstyle{remark}
-\newtheorem*{remark}{Remark}
-
-\begin{theorem}
-  This is a theorem that offers a profound insight into the
-  mathematical sectioning commands.
-\end{theorem}
-\begin{theorem}[Another theorem]
-  This is another theorem. Unlike the first one, this theorem has
-  been endowed with a name.
-\end{theorem}
-\begin{lemma}
-  Let us suppose that $x^2+y^2=z^2$. Then
-  \begin{equation}
-    \biggl\langle u\biggm|\sum_{i=1}^nF(e_i,v)e_i\biggr\rangle
-    =F\biggl(\sum_{i=1}^n\langle e_i|u\rangle e_i,v\biggr).
-  \end{equation}
-\end{lemma}
-\begin{proof}
-  $\nabla^2 f(x,y)=\frac{\partial^2f}{\partial x^2}+
-   \frac{\partial^2f}{\partial y^2}$.
-\end{proof}
-\begin{corollary}
-  This is a corollary.
-\end{corollary}
-\begin{remark}
-  This is a remark.
-\end{remark}
-
-\chapter{Floats and references}
-\begin{figure}
-  \begin{center}
-    %% PNG and JPG images can be inserted into the document as well,
-    %% but their resolution needs to be adequate. The minimum is
-    %% about 100 pixels per 1 centimeter or 300 pixels per 1 inch.
-    %% That means that a JPG or PNG image typeset at 4 × 4 cm should
-    %% be 400 × 400 px large at the bare minimum.
-    %%
-    %% The optimum is about 250 pixels per 1 centimeter or 600
-    %% pixels per 1 inch. That means that a JPG or PNG image typeset
-    %% at 4 × 4 cm should be 1000 × 1000 px large or larger.
-    \includegraphics[width=6.3cm]{fithesis/logo/mu/fithesis-base-english-color}
-  \end{center}
-  \caption{The logo of the Masaryk University at 6.3\,cm}
-  \label{fig:mulogo1}
-\end{figure}
-
-\begin{figure}
-  \begin{center}
-    \begin{minipage}{.5\textwidth}
-      \includegraphics[width=\textwidth]{fithesis/logo/mu/fithesis-base-english-color}
-    \end{minipage}
-    \hfill  % Fill the horizontal space between the images
-    \begin{minipage}{.33\textwidth}
-      \includegraphics[width=\textwidth]{fithesis/logo/mu/fithesis-base-english-color} \\[1em]
-      \includegraphics[width=\textwidth]{fithesis/logo/mu/fithesis-base-english-color}
-    \end{minipage}
-  \end{center}
-\caption{The logo of the Masaryk University at $\frac12$ and
-    $\frac13$ of text width}
-  \label{fig:mulogo2}
-\end{figure}
-
-\begin{table}
-  \begin{tabularx}{\textwidth}{lllX}
-    \toprule
-    Day & Min Temp & Max Temp & Summary \\
-    \midrule
-    Monday & $13^{\circ}\mathrm{C}$ & $21^\circ\mathrm{C}$ & A
-    clear day with low wind and no adverse current advisories. \\
-    Tuesday & $11^{\circ}\mathrm{C}$ & $17^\circ\mathrm{C}$ & A
-    trough of low pressure will come from the northwest. \\
-    Wednesday & $10^{\circ}\mathrm{C}$ &
-    $21^\circ\mathrm{C}$ & Rain will spread to all parts during the
-    morning. \\
-    \bottomrule
-  \end{tabularx}
-  \caption{A weather forecast}
-  \label{tab:weather}
-\end{table}
-
-The logo of the Masaryk University is shown in Figure \ref{fig:mulogo1} and
-Figure \ref{fig:mulogo2} at pages \pageref{fig:mulogo1} and
-\pageref{fig:mulogo2}. The weather forecast is shown in Table
-\ref{tab:weather} at page \pageref{tab:weather}. The following
-chapter is Chapter \ref{chap:matheq} and starts at page
-\pageref{chap:matheq}.  Items \ref{item:star1}, \ref{item:star2},
-and \ref{item:star3} are starred in the following list:
-\begin{compactenum}
-  \item some text
-  \item some other text
-  \item $\star$ \label{item:star1}
-  \begin{compactenum}
-    \item some text
-    \item $\star$ \label{item:star2}
-    \item some other text
-    \begin{compactenum}
-      \item some text
-      \item some other text
-      \item yet another piece of text
-      \item $\star$ \label{item:star3}
-    \end{compactenum}
-    \item yet another piece of text
-  \end{compactenum}
-  \item yet another piece of text
-\end{compactenum}
-If your reference points to a place that has not yet been typeset,
-the \verb"\ref" command will expand to \textbf{??} during the first
-run of
-\texttt{pdflatex \jobname.tex}
-and a second run is going to be needed for the references to
-resolve. With online services -- such as Overleaf -- this is
-performed automatically.
-
-\chapter{Mathematical equations}
-\label{chap:matheq}
-\TeX{} comes pre-packed with the ability to typeset inline
-equations, such as $\mathrm{e}^{ix}=\cos x+i\sin x$, and display
-equations, such as \[
-  \mathbf{A}^{-1} = \begin{bmatrix}
-  a & b \\ c & d \\
-  \end{bmatrix}^{-1} =
-  \frac{1}{\det(\mathbf{A})} \begin{bmatrix}
-  \,\,\,d & \!\!-b \\ -c & \,a \\
-  \end{bmatrix} =
-  \frac{1}{ad - bc} \begin{bmatrix}
-  \,\,\,d & \!\!-b \\ -c & \,a \\
-  \end{bmatrix}.
-\] \LaTeX{} defines the automatically numbered \texttt{equation}
-environment:
-\begin{equation}
-  \gamma Px = PAx = PAP^{-1}Px.
-\end{equation}
-The package \textsf{amsmath} provides several additional
-environments that can be used to typeset complex equations:
-\begin{enumerate}
-  \item An equation can be spread over multiple lines using the
-    \texttt{multline} environment:
-    \begin{multline}
-      a + b + c + d + e + f + b + c + d + e + f + b + c + d + e +
-f \\
-      + f + g + h + i + j + k + l + m + n + o + p + q
-    \end{multline}
-
-  \item Several aligned equations can be typeset using the
-    \texttt{align} environment:
-    \begin{align}
-              a + b &= c + d     \\
-                  u &= v + w + x \\[1ex]
-      i + j + k + l &= m
-    \end{align}
-
-  \item The \texttt{alignat} environment is similar to
-    \texttt{align}, but it doesn't insert horizontal spaces between
-    the individual columns:
-    \begin{alignat}{2}
-      a + b + c &+ d       &   &= 0 \\
-              e &+ f + g   &   &= 5
-    \end{alignat}
-
-  \item Much like chapter, sections, tables, figures, or list
-    items, equations -- such as \eqref{eq:first} and
-    \eqref{eq:mine} -- can also be labeled and referenced:
-    \begin{alignat}{4}
-      b_{11}x_1 &+ b_{12}x_2  &  &+ b_{13}x_3  &  &             &
-        &= y_1,                   \label{eq:first} \\
-      b_{21}x_1 &+ b_{22}x_2  &  &             &  &+ b_{24}x_4  &
-        &= y_2. \tag{My equation} \label{eq:mine}
-    \end{alignat}
-
-  \item The \texttt{gather} environment makes it possible to
-    typeset several equations without any alignment:
-    \begin{gather}
-      \psi = \psi\psi, \\
-      \eta = \eta\eta\eta\eta\eta\eta, \\
-      \theta = \theta.
-    \end{gather}
-
-  \item Several cases can be typeset using the \texttt{cases}
-    environment:
-    \begin{equation}
-      |y| = \begin{cases}
-        \phantom-y & \text{if }z\geq0, \\
-                -y & \text{otherwise}.
-      \end{cases}
-    \end{equation}
-\end{enumerate}
-For the complete list of environments and commands, consult the
-\textsf{amsmath} package manual\footnote{
-  See \url{http://mirrors.ctan.org/macros/latex/required/amsmath/amsldoc.pdf}.
-  The \texttt{\textbackslash url} command is provided by the
-  package \textsf{url}.
-}.
-
-\chapter{\textnormal{We \textsf{have} \texttt{several} \textsc{fonts}
-  \textit{at} \textbf{disposal}}}
-The serified roman font is used for the main body of the text.
-\textit{Italics are typically used to denote emphasis or
-quotations.} \texttt{The teletype font is typically used for source
-code listings.} The \textbf{bold}, \textsc{small-caps} and
-\textsf{sans-serif} variants of the base roman font can be used to
-denote specific types of information.
-
-\tiny We \scriptsize can \footnotesize also \small change \normalsize
-the \large font \Large size, \LARGE although \huge it \Huge
-is \huge usually \LARGE not \Large necessary.\normalsize
-
-A wide variety of mathematical fonts is also available, such as: \[
-  \mathrm{ABC}, \mathcal{ABC}, \mathbf{ABC}, \mathsf{ABC},
-  \mathit{ABC}, \mathtt{ABC}
-\] By loading the \textsf{amsfonts} packages, several additional
-fonts will become available: \[
-  \mathfrak{ABC}, \mathbb{ABC}
-\] Many other mathematical fonts are available\footnote{
-  See \url{http://tex.stackexchange.com/a/58124/70941}.
-}.
-
-\chapter{Conclusion}
-After linking a bibliography data\-base files to the document using
-the \verb"\"\texttt{thesis\discretionary{-}{}{}setup\{bib\discretionary{=}{=}{=}%
-\{\textit{file1},\textit{file2},\,\ldots\,\}\}} command, you can
-start citing the entries. This is just dummy text
-\parencite{borgman03} lightly sprinkled with citations
-\parencite[p.~123]{greenberg98}. Several sources can be cited at
-once: \cite{borgman03,greenberg98,thanh01}.
-\citetitle{greenberg98} was written by \citeauthor{greenberg98} in
-\citeyear{greenberg98}. We can also produce \textcite{greenberg98}%
-\ or %% Let us define a compound command:
-\def\citeauthoryear#1{(\textcite{#1},~\citeyear{#1})}%
-\citeauthoryear{greenberg98}%
-. The full bibliographic citation is:
-\emph{\fullcite{greenberg98}}. We can easily insert a bibliographic
-citation into the footnote\footfullcite{greenberg98}.
-
-The \verb"\nocite" command will not generate any
-output\nocite{muni}, but it will insert its arguments into
-the bibliography. The \verb"\nocite{*}" command will insert all the
-records in the bibliography database file into the bibliography.
-Try uncommenting the command
-%% \nocite{*}
-and watch the bibliography section come apart at the seams.
-
-When typesetting the document for the first time, citing a
-\texttt{work} will expand to [\textbf{work}] and the
-\verb"\printbibliography" command will produce no output. It is now
-necessary to generate the bibliography by running \texttt{biber
-\jobname.bcf} from the command line and then by typesetting the
-document again twice. During the first run, the bibliography
-section and the citations will be typeset, and in the second run,
-the bibliography section will appear in the table of contents.
-
-The \texttt{biber} command needs to be executed from within the
-directory, where the \LaTeX\ source file is located. In Windows,
-the command line can be opened in a directory by holding down the
-\textsf{Shift} key and by clicking the right mouse button while
-hovering the cursor over a directory.  Select the \textsf{Open
-Command Window Here} option in the context menu that opens shortly
-afterwards.
-
-With online services -- such as Overleaf -- or when using an
-automatic tool -- such as \LaTeX MK -- all commands are executed
-automatically. When you omit the \verb"\printbibliography" command,
-its location will be decided by the template.
 
   \printbibliography[heading=bibintoc] %% Print the bibliography.
 

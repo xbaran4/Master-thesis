@@ -154,14 +154,14 @@
 TODO: at the end
 
 \chapter{Project Jupyter}
-As this thesis focuses on checkpointing and restoring Jupyter Notebooks within JupyterHub, it begs the question: what even is JupyterHub or Jupyter Notebook? This first part of this chapter provides a brief look into what Jupyter Notebook is and how it is used before examining its next-generation successor, JupyterLab. The second part discusses JupyterHub, deconstructs it into its fundamental pieces, and describes each piece in detail to give a solid foundation of the inner workings of JupyterHub. The last part describes the specific distribution of JupyterHub on which this thesis builds.
+As this thesis focuses on checkpointing and restoring Jupyter Notebooks within JupyterHub, it begs the question: what even is JupyterHub or Jupyter Notebook? The first part of this chapter provides a brief look into what Jupyter Notebook is and how it is used before examining its next-generation successor, JupyterLab. The second part discusses JupyterHub, deconstructs it into its fundamental pieces, and describes each piece in detail to give a solid foundation of the inner workings of JupyterHub. The last part describes the specific distribution of JupyterHub on which this thesis builds.
 
 Jupyter Notebook, JupyterLab, and JupyterHub all share one thing in common: their umbrella project, Jupyter.
 \emph{Project Jupyter is an open-source software project and community that builds software, services, and open standards for interactive computing across dozens of programming languages} \cite{granger2021jupyter}.
 Project Jupyter and Jupyter originated from the IPython project, which provided an improved interactive Python shell over the default one \cite{ipython}. The same IPython now serves as the default execution engine (\emph{Kernel}) for Jupyter Notebook.
 
-Nowadays, Jupyter Notebooks are widely used in data science, machine learning, and scientific research for tasks like data analysis, with over ten million notebook documents available on GitHub \cite{granger2021jupyter}. In scientific research, Jupyter Notebooks allow researchers to document experiments, perform simulations, and share reproducible procedures. Educators use Jupyter Notebooks for interactive teaching, enabling students to simultaneously learn coding, mathematics, and data visualization. 
-Furthermore, businesses use it to create dashboards and reports, helping them organize and communicate data to support informed decisions.
+Nowadays, Jupyter Notebooks are widely used in data science, machine learning, and scientific research for tasks like data analysis, with over ten million notebook documents available on GitHub \cite{granger2021jupyter}. In scientific research, Jupyter Notebooks allow researchers to document experiments, perform simulations, and share reproducible procedures. Educators use Jupyter Notebooks for interactive teaching, enabling students to simultaneously learn programming, mathematics, and data visualization. 
+Finally, businesses use it to create dashboards and reports, helping them organize and communicate data to support informed decisions.
 
 \section{Jupyter Notebook}
 Jupyter Notebook is an open-source application that allows users to easily create and share computational notebooks - documents that combine code, interactive controls, plain language, graphs, and figures, among other visualizations \cite{granger2021jupyter}. Although there exist other projects focused on computation notebooks, such as the proprietary Wolfram Mathematica\footnote{\url{https://www.wolfram.com/mathematica/}}, Jupyter Notebooks gained widespread adoption due to its open-source nature and simplicity.
@@ -344,11 +344,73 @@ For polling, KubeSpawner utilizes an internal object called \emph{Reflector}, sp
 Stopping a Notebook is a comparatively simple task for KubeSpawner. It requests the removal of the Pod using the Kubernetes client and then waits until PodReflector signals that the Pod has been deleted.
 
 
-\chapter{Checkpoint/Restore in Userspace}
+\chapter{Checkpoint and Restore}
+TODO
 
-\section{Checkpoint/Restore in container runtimes}
+\section{Motivation}
+In Kubernetes, when a new Pod is supposed to be created, it is the responsibility of the \emph{kube-scheduler} to decide on which Node the Pod will live. The scheduler makes this decision based on the available resources on the Nodes and other configured rules. Nevertheless, as usage of the Cluster changes, there may be a time when it will be required to evict a Pod from one Node onto another. For example, the memory of a Node might be running thin as more and more Pods are scheduled to run on it. On the other hand, when only a few Pods are running on a Node, it might be beneficial to evict these Pods onto other Nodes in the Cluster and remove the Node altogether to save on running costs. However, what if the evicted Pod was in the middle of a long-running computation without storing intermediate results in the file system? Additionally, what if the Pod takes a long time to start or performs optimizations during its run, all of which are gone the moment the Pod is evicted?
 
-\section{Checkpoint/Restore in Kubernetes}
+An ideal solution to these problems would be a mechanism that would freeze (\emph{checkpoint}) the running Pod, move the entire contents of the Pod through a network onto another Node, and then unfreeze (\emph{restore}) the Pod, thereupon the Pod would continue running as if nothing happened. Since Pod is a group of one or more containers, and a container is a group of processes with extra isolation\footnote{The reduction of Pod into a group of processes is simplified for illustrative purposes.}, the question becomes how to transparently checkpoint and restore processes without the process noticing or providing the functionality itself. The \textbf{Checkpoint/Restore In Userspace} project implements such a mechanism for Linux processes.
+
+
+\section{Checkpoint/Restore In Userspace}
+Checkpoint/Restore In Userspace, or CRIU for short, is an open-source application written mainly in C, capable of freezing a Linux process and storing the complete state of a process to a file system, thus checkpointing the process. Moreover, CRIU can restore a process from the file system, allowing it to resume execution from the checkpointed state. Consequently, CRIU can be used for various tasks, such as live migration of applications, periodic snapshotting, and debugging without impacting the original application. It can be invoked through a command line interface (CLI), as a library in C, as well as through remote procedure calls (RPC) \cite{criu_main}.
+
+The main difference between CRIU and similar tools is that it runs exclusively in Linux user space instead of kernel space or on both sides. This was not always the case, as the very first versions of the project required a custom Linux kernel to work. However, as the required kernel changes were touching many kernel subsystems, the Linux kernel maintainers did not approve of adding these patches to mainline Linux \cite{criu_podcast}.
+
+In July 2011, Pavel Emelyanov, one of the CRIU authors, submitted a request for comment\footnote{\url{https://lwn.net/Articles/451916/}} (RFC) with the idea for checkpoint/restore utility running only in user-space. However, such functionality was not feasible without additional changes to the kernel API, though the patches would be much smaller than the whole C/R functionality existing in the kernel. During 2011, 2012, and 2013, CRIU was in the proof-of-concept stage, intending to define what kernel API was needed for CRIU to work from the user space. As many of the required changes were merged to the Linux kernel by the 3.11 version, CRIU was released in November 2013 in version 1.0 \cite{criu_history}. 
+
+
+\subsection{Process checkpointing}
+In CRIU, checkpointing a process is often referred to as dumping a process. Therefore, in the context of checkpointing, CRIU is often called dumper, whereas the checkpointed process is called dumpee. Most of the information about a process comes from the pseudo file system \emph{/proc}. 
+
+In a nutshell, during checkpointing, CRIU reads all needed data about the process and serializes the data using Protocol Buffers \footnote{\url{https://protobuf.dev/}} into a series of \emph{image} files saved on the file system. The image files use the \emph{.img} file extension such as the \emph{core.img} file, where values of the CPU registers are stored among other core process information \cite{criu_images}. These image files can be used to restore the process afterward. 
+
+Dumping consists of three stages. In the first stage, CRIU has to ensure that the whole process tree, including the root process, its sub-processes, and each thread, is frozen. This stage is vital to prevent any new resources from being acquired by the dumpee, such as new files or sockets being opened, as well as new threads, which could leak from dumping. CRIU cannot simply send a \emph{stop} signal to the dumpee as that would alter the inner state of the process. CRIU can be configured to freeze the process tree by one of two mechanisms, which are transparent to the dumpee \cite{criu_freezing}. The process tree is frozen either using cgroup \emph{Freezer}\footnote{\url{https://www.kernel.org/doc/Documentation/cgroup-v1/freezer-subsystem.txt}} or by walking the process tree (through the /proc file system) and using the Linux system call \emph{ptrace()} with the \emph{PTRACE\_SEIZE} command \cite{criu_cr}.
+
+In the second stage, CRIU collects all necessary resources of the processes and threads. One category of data can be collected outside the context of a task. These are for example, virtual memory areas, which are parsed from \emph{/proc/\{pid\}/smaps}, file descriptors parsed from \emph{/proc/\{pid\}/fd}, or core properties of a task like CPU registers are parsed from \emph{/proc/\{pid\}/stat} and through the ptrace() system call. However, some data cannot be collected outside the dumpee's context (address space) \cite{criu_cr}, or it is much faster to do it from the inside, such as memory pages. For that, CRIU utilizes a different clever mechanism.
+
+To collect data from inside of the dumpee's address space, using ptrace(), CRIU injects instructions for an \emph{mmap()} system call, precisely at the memory location pointed to by the instruction pointer of dumpee\footnote{The original instructions of the dumpee are stored so that they can put back afterward in case dumpee should continue to run after the checkpoint.}. Then, CRIU lets dumpee run so that it performs the injected mmap() system call, which allocates a piece of shared memory between CRIU and dumpee, where a \emph{position-independent parasitic code} will live. CRIU will then change the instruction pointer of the dumpee to point to that parasitic code. Henceforth, the parasitic code \emph{running as the dumpee}, is listening to commands from CRIU (as a sort of daemon illustrated in \Cref{fig:parasite-daemon}) and dumping necessary data to disk \cite{criu_parasite}.
+
+\begin{figure}[H]
+  \begin{center}
+  \includegraphics[width=\textwidth]{figures/criu-parasite-daemon.png}
+  \end{center}
+  \caption{CRIU's parasitic code acting like a daemon \cite{criu_parasite}.}
+  \label{fig:parasite-daemon}
+\end{figure}
+
+In the third and last stage, after everything is dumped, CRIU sends a command to the parasite code to finish, the parasite memory area is unmapped from dumpee, and the original instructions, together with the instruction pointer and registers are restored to the state before the parasite injection, thus \emph{curing the dumpee} \cite{criu_parasite}. Depending on the configuration, CRIU can then detach from the dumpee and unfreeze the process tree as if nothing happened or kill the whole process tree.
+
+\subsection{Process restoration}
+To restore a process, CRIU first reads all the image files and finds which processes share resources. After that, CRIU starts morphing itself to the process tree it should restore by calling the \emph{fork()} system call. However, CRIU has not yet recreated all the threads. In stage three, CRIU opens necessary files, prepares namespaces, changes the working and root directory, maps and fills private memory areas, creates sockets and other resources. Nevertheless, it leaves restoration of the exact memory mapping locations, timers, process credentials, and threads to the last stage \cite{criu_cr}.
+
+CRIU has other intricate problems that must be solved in the last stage. As CRIU is morphing itself into the dumpee, it should un-map the memory belonging to CRIU and map the memory belonging to the dumpee. The first problem is that right after CRIU unmaps its memory, the next instruction would be read from a memory location not belonging to the process, resulting in a segmentation fault. The second problem is that the memory mappings of the dumpee might overlap with CRIU memory. Similarly to the parasitic code for dumping, CRIU uses position-independent code referred to as the \emph{restorer context} to solve these problems. CRIU allocates a new chunk of memory that does not intersect the memory of CRIU or the memory of dumpee and puts there the data required for the restorer context and the code of the restorer itself. CRIU then \emph{jumps} to the restorer context and restores all the remaining resources, completing the morphing to the dumpee \cite{criu_restorer}.
+
+% MAYBE TODO: For the final step, CRIU will switch to the restorer context — cleaning up its own memory mappings — and restore all other resources left: threads, timers (so they will fire as late as possible), credentials & security settings (so they won’t limit us during the restore process), private memory areas re-mappings (using mremap), file mappings (using mmap), and anonymous shared mappings (also using mmap).
+\subsection{Caveats}
+
+\section{Checkpoint/Restore in Kubernetes and container runtimes}
+Checkpointing a container is not directly possible through the Kubernetes API. Instead, checkpointing is possible only by using the Kubelet API, specifically through an HTTP request \cite{k8s_kubelet_api}:
+
+\begin{description}
+    \item[POST /checkpoint/\{namespace\}/\{pod\}/\{container\}] where namespace, pod, and container are path parameters representing the existing name of these objects in Kubernetes. Additionally, a query parameter \emph{timeout} can be provided, specifying time in seconds, after which the checkpointing will be aborted.
+\end{description}
+The end result of the request is a \emph{tar} archive file located in the \emph{/checkpoints} directory below the Kubelet's root directory.
+
+The checkpointing was introduced in Kubernetes v1.25 as an alpha feature and had to be enabled for the Kubelet through a feature gate \emph{ContainerCheckpoint}. However, since Kubernetes v1.30, checkpointing has been promoted to a beta state and is thus enabled by default.
+
+With all that said, Kubelet does not do the actual checkpointing itself. As \Cref{fig:criu-calltrace} illustrates, the kubelet will request a checkpoint from the high-level container runtime on the Node, such as containerd or CRI-O.
+\begin{figure}[H]
+  \begin{center}
+  \includegraphics[width=.6\textwidth]{figures/checkpoint-callchain.png}
+  \end{center}
+  \caption{Call--chain for checkpointing a container in Kubernetes.}
+  \label{fig:criu-calltrace}
+\end{figure}
+In turn, the high--level container runtime requests checkpointing from a low--level container runtime like \emph{runc}, which finally invokes CRIU to checkpoint the container. This call--chain implies that not only Kubelet has to provide API for checkpointing, but also the high and low level container runtimes.
+
+
 
 \chapter{Checkpoint/Restore of Jupyter Notebooks in Kubernetes}
 

@@ -428,6 +428,7 @@ While the initial support for checkpointing in runc was available as early as 20
 
 
 \subsection{Restoring a container outside Kubernetes}
+\label{subsec:restoring}
 Conversely, restoring a container is impossible through the standard Kubernetes or kubelet API, as the Kubernetes community has yet to agree upon how such an API would look or if it even has sufficient use cases. Since Pod is the smallest deployable unit in Kubernetes, the restored container would have to be mapped to a Pod, and it needs to be clarified which component should handle this mapping, if any.
 
 Fortunately, there is a mechanism in CRI-O and soon might be in containerd\footnote{\url{https://github.com/containerd/containerd/pull/10365}} as well, implemented by the aforementioned Adrian Reber, which allows starting a container from a container image that was created previously through checkpointing. When a container is scheduled to start, the container runtime checks the annotations of the container image. If a specific annotation is present, it triggers a restore of the container rather than a normal start. The annotations are:
@@ -442,12 +443,25 @@ By providing such an image, the definition of the container in the Pod manifest 
 \chapter{Checkpoint/Restore of Jupyter Notebooks in Kubernetes}
 The idea behind checkpointing and restore of Jupyter Notebooks is straightforward. When JupyterHub requests to stop a Notebook, either due to user's inactivity or based on user's decision, the Spawner will first checkpoint the Notebook and only afterward stop it. The next time user starts his Notebook, the Spawner, rather than spawning a regular Notebook, restores the previous checkpoint of the Notebook. Translating this idea into Kubernetes means that the KubeSpawner, the Spawner of Z2JH distribution, needs to be extended to provide checkpoint/restore capabilities. The Z2JH distribution was chosen as the more scalable of the two options provided by JupyterHub.
 
-Motivation and potential benefits gained by extending JupyterHub with checkpoint/restore capabilities were partly outlined in \Cref{chap:cr}. However, because JupyterHub is in control when Pods (Notebooks) are deleted, there are additional benefits. For example, Jupyter Notebooks can run in Kubernetes without a PersistentVolume and  
+% Motivation and potential benefits gained by extending JupyterHub with checkpoint/restore capabilities were partly outlined in \Cref{chap:cr}. However, because JupyterHub is in control when Pods (Notebooks) are deleted, there are additional benefits. For example, Jupyter Notebooks can run in Kubernetes without a PersistentVolume and  
 
 \section{Architecture of the prototype}
-As JupyterHub is not the only application that would benefit from checkpoint/restore capabilities in Kubernetes, one of the first design decisions was to split the c/r functionality into a separate service called \emph{Checkpointer} (\Cref{chap:checkpointer}). The service was designed to be generic and oblivious to the existence of JupyterHub. It exposes HTTP API to allow any application in the cluster, and possibly even outside the cluster, to request a container checkpoint, build the checkpoint into a container image and push this image to a container registry.
+As JupyterHub is not the only application that would benefit from checkpoint/restore capabilities in Kubernetes, one of the first design decisions was to split the c/r functionality into a separate service called \emph{Checkpointer} (\Cref{chap:checkpointer}). The service was designed to be generic and oblivious to the existence of JupyterHub. It exposes HTTP API to allow any application in the cluster, and possibly even outside the cluster, to request a container checkpoint, build the checkpoint into a container image and push it to a container registry.
 
-On the other hand, the logic required to integrate JupyterHub with the Checkpointer, exists as a component called \emph{CheckpointSpawner} (\Cref{chap:checkpoint_spawner}) running within JupyterHub as a Spawner.
+On the other hand, the logic required to integrate JupyterHub with the Checkpointer, exists as a component called \emph{CheckpointSpawner} (\Cref{chap:checkpoint_spawner}) running within JupyterHub as a Spawner. Responsibility of CheckpointSpawner is to keep track of each user's Notebook checkpoints and if possible, spawn a Notebook from a checkpoint. 
+
+\Cref{fig:checkpoint-highlevel} illustrates how CheckpointSpawner and Checkpointer work in unison to extend JupyterHub with checkpoint/restore capabilities. When user authenticates and starts a Notebook for the first time, CheckpointSpawner will create a new Notebook Pod from a container image specified in JupyterHub configuration. Once user requests\footnote{Same logic applies if JupyterHub stops the Notebook due to user inactivity.} to stop his Notebook, CheckpointSpawner request a checkpoint of user's Notebook from Checkpointer, which in turn triggers the checkpointing process in background. This asynchronous process is described more in detail in Chapter TODO. The next time, Notebook is requested to start, CheckpointSpawner notices that there should be a checkpoint of the Notebook made and it will ask the Checkpointer for the container image name. Checkpointer will wait for checkpointing to finish, if necessary, and responds with the image name. At last, CheckpointSpawner creates a new Pod with the checkpointed container image name.
+
+\begin{figure}[H]
+  \begin{center}
+  \includegraphics[width=\textwidth]{figures/checkpoint-highlevel.png}
+  \end{center}
+  \caption{High--level view of Notebook checkpointing flow.}
+  \label{fig:checkpoint-highlevel}
+\end{figure}
+
+\subsection{Checkpoint/Restore of multi-container Notebooks}
+The Z2JH JupyterHub distribution allows customizing manifest of the Notebook Pod, which can include specifying multiple containers. These containers might be used to initialize the Notebook container, or run along side it, providing some additional functionality. However, due to the increased complexity and scope of checkpointing and restoring multiple containers inside a Pod, this thesis focuses only on c/r of the Notebook container. When CheckpointSpawner creates a Pod from a checkpointed container image, it will also include the other pre--configured containers. Nevertheless, if the other containers were holding some internal state, it will be lost. Consequently, the Pod from restored Notebook works most reliably when it contains only the Notebook container.
 
 
 \section{Runtime Environment}
@@ -470,33 +484,69 @@ The cluster consist of one control--plane Node and one worker Node initialized t
 
 \end{description}
 
-The provisioning of the virtual machines was done through the web browser UI of MetaCentrum and is thus not part of this thesis. However, a shell script with commands that install and build necessary binaries and then install Kubernetes cluster, is provided in \Cref{apendix}. Note that due to unpredictability of IP addresses, hostnames, as well as choice of container runtime among others, the script should be used in a cut and paste manner rather than executing it as a whole.
+The provisioning of the virtual machines was done through the Open-Stack UI of MetaCentrum and is thus not part of this thesis. However, a shell script with commands that install and build necessary binaries and then install Kubernetes cluster, is provided in \Cref{apendix}. Note that due to unpredictability of IP addresses, hostnames, as well as choice of container runtime, among others, the script should be used in a cut and paste manner rather than executing it as a whole.
 
 
 
 \chapter{Checkpointer}
 \label{chap:checkpointer}
 
+Checkpointer is a standalone application written in Go, designed to run as a Pod within Kubernetes. The main purpose of Checkpointer is to checkpoint a container and build a container image which can be used to restore the container. Checkpointer exposes HTTP API to provide this functionality.
+
 
 \section{Checkpointer API}
+The time it takes to checkpoint a container is directly proportional to the memory usage as well as the size of the container file system. Additionally, since Checkpointer also builds and pushes a container image from this checkpoint, the time from beginning of a request to the end result might span from tens of seconds to several minutes. Applications, including JupyterHub, are generally not prepared to wait that long for a response. For this reason the API of Checkpointer consists two endpoints:
+
+\begin{description}
+    \item[ HTTP POST /checkpoint/\{namespace\}/\{pod\}/\{container\}]
+
+TODO. Similarly to the Kubelet checkpoint API (\Cref{sec:criu:kubernetes}), invoking this endpoints triggers a checkpoint of a container. However, the end--result is not a tar archive on a Node, but a container image that is pushed to remote container registry.
+
+The endpoint expects an input body in JSON format with boolean option \emph{deletePod} and a boolean option \emph{async}. The \emph{deletePod} option tells Checkpointer whether it should delete the Pod after checkpointing. More importantly, the \emph{async} option defines if the checkpointing should happen synchronously or asynchronously. When the option is set to \emph{false}, Checkpointer will send an HTTP response only after the checkpointing finished, be it successfully or not. On the other hand, when set to \emph{true}, Checkpointer will start the checkpointing in the background, and immediately responds to the request with a \emph{checkpointIdentifier} string. The identifier can be used with the second endpoint at any time in the future to obtain the result of checkpointing.
+
+    \item[ HTTP GET /checkpoint] Using this endpoint is only meaningful if the caller requested an asynchronous checkpointing. This endpoint expects a \emph{checkpointIdentifier} as a query parameter with previously obtained string value. When called, the endpoint will wait until the checkpointing is finished and respond with the result.
+\end{description}
 
 
-\section{Building and pushing checkpoint container image}
+\section{Checkpointer inner workings}
+
+
+
+\subsection{Building container images with Kaniko}
+After checkpointing a container, Checkpointer will create a container image and push it to a remote registry. However, building a container image \emph{from within a container} with tools like Docker would require Checkpointer container to run as privileged, which is not ideal for production environments as is imposes a security risk. Therefore Checkpointer uses a tool called \emph{Kaniko}, designed to run as a container withing Kubernetes and build containers in user--space.
+
+To use Kaniko for building and pushing the checkpoint container image, Checkpointer creates a Kaniko Pod. To build a container image, Kaniko requires a \emph{build context}, which includes Dockerfile and all the files which should be included in the container image. Additionally, Kaniko needs to know where to push the container image and the credentials required to do so. When Checkpointer creates the Kaniko Pod manifest, it includes the name of the checkpoint container image name in command line arguments of the Kaniko container. To provide the registry credentials, Checkpointer mounts a Kubernetes Secret as a volume for the Pod. Creation of this Secret is part of the deployment steps and Checkpointer assumes the Secret already exists but provides configuration option to specify the name of the Secret.
+
+Providing the build context for Kaniko is a more complicated process. Kaniko can accept the build context through various methods, but only two of those are relevant for this thesis. The first way is to mount a directory containing the build context into the Kaniko Pod. The second way is to write the whole build context as a compressed archive to the standard input (stdin) of the Kaniko container. Checkpointer can be configured to use either of the two strategies, but it has effect on the algorithm Checkpointer uses.
+
+By default, Checkpointer uses the \emph{stdin strategy}. Consequently, Checkpointer needs to archive and compress the build context, which consists of a Dockerfile and the checkpoint archive. Moreover, Checkpointer needs to have RBAC permissions to attach to a Pod (see \Cref{sec:manifests}). However, this strategy offers an advantage compared to the other, due to how long it takes for Kaniko Pod to start. Checkpointer can create the Kaniko Pod before calling Kubelet checkpoint API, which means while Kaniko Pod is initializing, Kubelet is creating the checkpoint archive. With the second strategy, at the start of Kaniko, the build context must be already present on file system of Kaniko, which means Checkpointer must create the Kaniko Pod only after Kubelet finished creating the checkpoint archive. In this case, non--trivial amount of time is wasted, waiting for Kaniko Pod to start.
+
+\subsection{Base image of checkpoint image}
+Using Kaniko for container building comes with one pitfall. As \Cref{subsec:restoring} explained, for container runtime to trigger a container restore, the container image needs to have the appropriate annotation. However, at the time of writing, Kaniko does not allow to configure annotations for the images it builds. As a solution to this problem, this thesis provides a base image \emph{pbaran555/checkpoint-base:latest} created \emph{from scratch} and annotated with annotations required for both containerd and CRI-O. Checkpointer will use this image as base image for all checkpoint container images. Checkpointer can be configured (\Cref{sec:checkpointer:configuration}) to use a different base image, provided, it is publicly accessible or accessible using the credentials which Kaniko consumes. In this case, users need to make sure the base image is correctly annotated for the container runtime they are using.
+
+
+
+\section{Running in multi-Node cluster}
+Since each Kubernetes Node has an instance of Checkpointer running, a question arises. When a request comes to a Checkpoint on a Node \emph{A}, what happens if the container to be checkpointed is running on Node \emph{B}?
+
+To be able to checkpoint container running on \emph{any} Node, Checkpointer contains a middleware request handler called \emph{RoutingProxy}. The role of the RoutingProxy
 
 
 \section{Configuration options}
+\label{sec:checkpointer:configuration}
 
 \section{Kubernetes manifests}
-In order for Checkpointer to run in Kubernetes without any issues, it needs to be deployed to Kubernetes with Kubernetes resources (manifests) defined in \emph{k8s-manifests} directory of \Cref{apendix}. The following list provides a summary of what they are and why they are needed:
+\label{sec:manifests}
+In order for Checkpointer to run in Kubernetes without any issues, it needs to be deployed with Kubernetes resources (manifests) defined in \emph{k8s-manifests} directory of \Cref{apendix}. The following list provides a summary of what they are and why they are needed:
 
 \begin{description}
     
     \item[DaemonSet] Deploying Checkpointer as DaemonSet allows it to run automatically on every Node. In case a new Node joins the cluster, Kubernetes will create new Checkpointer Pod on that Node, and it will also recreate a Pod in case it is deleted from a Node. The DaemonSet contains two important configuration settings. The first is the \emph{hostNetwork} set to \emph{true}. This setting allows Checkpointer to communicate with Kubelet through localhost. The second configuration setting is represented by the \emph{volumeMounts}. The 
-    \emph{checkpoints-tar-dir} mount is for Checkpointer to have access to the tar archives (checkpoints) created by the Kubelet. Mount called \emph{build-contexts-dir} is for temporary transfer of build contexts to kaniko. Lastly, \emph{cert-dir} mount is used to load the SSL certificate and key of Kubelet.
+    \emph{checkpoints-tar-dir} mount is for Checkpointer to have access to the tar archives (checkpoints) created by the Kubelet. Mount called \emph{build-contexts-dir} is for temporary transfer of build contexts to kaniko. Lastly, \emph{kubelet-tls-secret} mount is used to load a TLS certificate and key to authenticate to Kubelet.
     
     \item[ConfigMap] Used for Checkpointer configuration. Checkpointer consumes the key--value pairs from ConfigMap as environment variables.    
     
-    \item[Secret] The Secret of type \emph{dockerconfigjson} is technically not required by Checkpointer itself, but by the kaniko Pod it creates, so that it can push to a remote container registry using credentials from this Secret.
+    \item[Secret] The Secret of type \emph{dockerconfigjson} is technically not required by Checkpointer itself, but by the Kaniko Pod it creates, so that it can push to a remote container registry using credentials from the Secret. Meanwhile the \emph{tls} Secret is needed for Checkpointer to authenticate itself to Kubelet when invoking Kubelet API. As previously mentioned, the Secret is mounted into Checkpointer as kubelet-tls-secret.
     
     \item[ClusterRoleBinding, ClusterRole, and ServiceAccount]
     Using the Kubernetes API to list or delete Pods requires permissions. Checkpointer needs to be able to get, list, delete, and attach to Pods across cluster. Thus, ClusterRole needs to be created with these permissions, ServiceAccount, which the Checkpointer attaches (in DeamonSet), and lastly ClusterRoleBinding, which binds the ServiceAccount with the ClusterRole.
@@ -521,6 +571,8 @@ TODO: approx 1-2 page
 e.g. about security 
 turning checkpointer into an operator
 adding controlls to checkpoint from jupyterhub
+space complexity - remote registry and local registry
+development environment
 
 \chapter{Conclusion}
 TODO: approx 1 page

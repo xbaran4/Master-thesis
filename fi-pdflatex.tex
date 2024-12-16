@@ -407,6 +407,7 @@ CRIU has other intricate problems that must be solved in the last stage. As CRIU
 
 
 \subsection{Caveats}
+\label{section:caveats}
 CRIU is not capable of checkpointing and restoring every possible Linux process. The main reason behind this is that processes can use a resource, such as a block device, which does not expose its inner state. The hardware behind the block device might not even exist on the machine where restore is initiated. This problem is usually avoided when working with containers, as containers should contain everything needed within the container image. However, when checkpointing a container, CRIU also needs to dump the top-level file system layer of the container so that upon restoration, the restored container can see the changes made to files that were not opened at the time of checkpointing.
 
 
@@ -730,7 +731,11 @@ While working on the implementation of the prototype presented in this thesis, s
 
 This thesis does not address the disk space occupied by checkpointed container images on the registry and Nodes. Since the checkpoint image includes the entire file system and memory and the images do not support layer sharing, they consume significant disk space and require regular pruning.
 
-Prototype presented in this thesis was developed with a strong emphasis on security. Checkpointer utilizes Kaniko to build checkpoint container images, removing the need for the Checkpointer container to run with privileged access. Default configuration options were chosen to be secure, requiring users to opt for less secure settings if desired explicitly. However, securing the Checkpointer HTTP API is not addressed in this work due to two key considerations: securing the HTTP API is relatively simple compared to the complexity of implementing checkpoint/restore functionality, making it appropriate for future work, and addressing it at this stage would unnecessarily complicate the development process and cluster setup.
+The prototype presented in this thesis was developed with a strong emphasis on security. Checkpointer utilizes Kaniko to build checkpoint container images, removing the need for the Checkpointer container to run with privileged access. Default configuration options were chosen to be secure, requiring users to opt for less secure settings if desired explicitly. However, securing the Checkpointer HTTP API is not addressed in this work due to two key considerations: addressing it at this stage would unnecessarily complicate the development process and cluster setup, and more importantly, there is ongoing work to introduce checkpoint functionality to the Kubernetes API not just the Kubelet API along with matching RBAC permissions. This change will influence how the authentication of Checkpointer API is designed.
+
+
+
+% Prototype presented in this thesis was developed with a strong emphasis on security. Checkpointer utilizes Kaniko to build checkpoint container images, removing the need for the Checkpointer container to run with privileged access. Default configuration options were chosen to be secure, requiring users to opt for less secure settings if desired explicitly. However, securing the Checkpointer HTTP API is not addressed in this work due to two key considerations: securing the HTTP API is relatively simple compared to the complexity of implementing checkpoint/restore functionality, making it appropriate for future work, and addressing it at this stage would unnecessarily complicate the development process and cluster setup. Moreover, there is an ongoing work to introduce checkpoint API to the Kubernetes API not just the Kubelet API along with matching RBAC permissions. This change would influence how authentication of Checkpointer API is designed.
 
 One of the initial design ideas for Checkpointer was to make it into a Kubernetes Operator. Checkpointer, in its current state, does resemble an Operator. It runs natively in Kubernetes and uses the Kubernetes API to accomplish its tasks. However, in the end, the design choice for an HTTP API won, mainly due to the added complexity Kubernetes Custom Resources would impose on JupyterHub. The Spawner would have to be able to create Custom Resources and watch for changes in their status. These operations would require RBAC permissions, and the whole cluster setup would be even more complicated than it already is. Nevertheless, with more applications integrating with Checkpointer and more use cases emerging as a result, it might prove beneficial to have Checkpointer running as an Operator.
 
@@ -753,18 +758,15 @@ Based on this research, a prototype system was developed to checkpoint a Jupyter
 \appendix %% Start the appendices.
 \chapter{Contents of the Archive}
 \label{apendix}
+This work consists of the electronic version of the thesis and a zip
+archive \texttt{checkpoint-in-k8s.zip} containing the prototype system. The archive includes a \texttt{README.md} file with the prototype installation instructions along with five directories:
+\begin{itemize}
+    \item \textbf{checkpoint-spawner/} The source code of CheckpointSpawner component as described in \Cref{chap:checkpoint_spawner}.
+    \item \textbf{checkpointer/} The source code of Checkpointer component as described in \Cref{chap:checkpointer}.
+    \item \textbf{etc/} Contains CRIU configuration settings necessary to checkpoint/restore Jupyter Notebook as described in \Cref{section:caveats}.
+    \item \textbf{scripts/} Includes a shell script for installation of runtimes as described in \Cref{sec:runtime-env}.
+    \item \textbf{timer/} Contains a simple application useful for testing container checkpoint/restore in Kubernetes.
+\end{itemize}
 
-TODO: explain how to run or reference README.
-1. Creating Kubernetes Cluster as described in \Cref{sec:runtime-env}.
-
-2. Creating Kubernetes TLS Secret with certificate and private key for authentication to Kubelet, and dockerconfigjson Secret with credentials to container registry.
-
-3. Building Checkpointer image with Docker.
-
-4. Building CheckpointSpawner package and Hub container image using importing package.
-
-5. Deploying Checkpointer, with environment variable pointing to a remote container registry.
-
-6. Deploying Z2JH Helm charts with overridden config.yaml.
 
 \end{document}
